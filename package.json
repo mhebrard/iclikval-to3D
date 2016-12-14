@@ -1,0 +1,26 @@
+{
+  "name": "iclikval-to3D",
+  "version": "1.0.0",
+  "description": "3D network micro-service for the Crowdsourced Literature Annotation Iclikval (http://iclikval.riken.jp/)",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mhebrard/iclikval-to3D.git"
+  },
+  "keywords": [],
+  "author": "Maxime Hebrard <maxime.hebrard@gmail.com> (http://github.com/mhebrard)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mhebrard/iclikval-to3D/issues"
+  },
+  "homepage": "https://github.com/mhebrard/iclikval-to3D#readme",
+  "dependencies": {
+    "body-parser": "^1.15.2",
+    "express": "^4.14.0",
+    "http": "0.0.0",
+    "morgan": "^1.7.0"
+  }
+}
