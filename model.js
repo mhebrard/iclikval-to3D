@@ -1,6 +1,8 @@
 // require
 var config = require('./config.json');
 var http = require('http');
+var hierarchy = require('d3-hierarchy');
+var scale = require('d3-scale');
 
 //Query Params//
 var firstPage;
@@ -23,21 +25,57 @@ module.exports.countMedia = function(params) {
   mode='countMedia';
 
   return Promise.resolve()
-  .then(function() { return request(); })
+  .then(function() {
+    return new Promise(function(resolve, reject) {
+      query(firstPage, resolve);
+    });
+  })
+  .then(function(out) {
+    return new Promise(function(resolve, reject) {
+      //format root for d3
+      var root = {name:'root', children:[]};
+      var children = Object.keys(out).map(m => {
+        return {name:m, value:out[m]};
+      });
+      root.children = children;
+
+      //format pack
+      // var diameter = 500;
+      var pack = hierarchy.pack()
+      .size([100, 60])
+      .padding(2);
+
+      var nodes = pack(
+        hierarchy.hierarchy(root)
+        //Math.log10(x)
+        .sum(function(d) { return Math.log10(d.value); })
+        // .sum(function(d) { return d.value })
+      ).descendants().slice(1);
+      console.log(nodes);
+      //map 2D to 3D
+      var azimut = scale.scaleLinear().domain([0,1]).range([-50,50]);
+      var polar = scale.scaleLinear().domain([0,1]).range([-30,30]);
+      var radius = 4;
+      //format for unity3D
+      var output = nodes.map(m => {
+        return {name: m.data.name,
+          value: m.data.value,
+          r:m.r,
+          x:radius * Math.sin(polar(m.y)) * Math.cos(azimut(m.x)),
+          y:radius * Math.sin(polar(m.y)) * Math.sin(azimut(m.x)),
+          z:radius * Math.cos(polar(m.y))
+        }
+      });
+      resolve({galaxies:output});
+    });
+  })
   .then(function(out) {
     console.log("out", out);
     return out; })
 	.catch(function(err) { return Error("server.model.countMedia:"+err)})
 }
 
-function request() {
-  return new Promise(function(resolve, reject) {
-    query(firstPage);
-    resolve(raw);
-  });
-}
-
-function query(page) {
+function query(page, callback) {
 
 	var options = {
 		host: 'api.iclikval.riken.jp',
@@ -59,7 +97,7 @@ function query(page) {
 	      body += chunk;
 	  });
 	  res.on('end', function(){
-				receive(JSON.parse(body));
+				receive(JSON.parse(body), callback);
 	      // console.log("Got a response: ", fbResponse);
 	  });
 	});
@@ -69,7 +107,7 @@ function query(page) {
 	req.end();
 }
 
-function receive(data) {
+function receive(data, callback) {
 	if (sorted === 'desc') { // 1st page
 		sorted = 'bottomTop'
 		console.log(`from page ${data.page_count} to ${lastPage}`);
@@ -81,13 +119,13 @@ function receive(data) {
 			if(data.page < data.page_count && (lastPage>0 ? data.page<lastPage : true) ) { //if lastPage="", read all
 				query(data.page + 1);
 			} else {
-				end();
+				callback(raw);
 			}
 		}	else { // bottomTop
 			if(data.page > 1 && data.page > lastPage) {
 				query(data.page - 1);
 			} else {
-				end();
+				 callback(raw);
 			}
 		}
 	}
@@ -96,12 +134,5 @@ function receive(data) {
 function action(data) {
   if(mode === "countMedia") {
     raw = data.extra.media_count.media;
-  }
-}
-
-function end() {
-  if(mode === "countMedia") {
-    console.log(raw);
-    // return Promise.resolve(raw);
   }
 }
