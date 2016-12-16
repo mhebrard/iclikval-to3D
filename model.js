@@ -15,13 +15,13 @@ var mode;
 var queryString;
 var raw = {init:'raw'};
 
-module.exports.countMedia = function(params) {
+module.exports.countMedia = function(param) {
   firstPage=1;
   lastPage=1;
   pageSize=1;
   sorted='asc';
   entry='search';
-  queryString='&db=default&media_type=journal_article&q=genes&term=genes';
+  queryString=`&db=default&media_type=journal_article&q=${param.query}&term=${param.query}`;
   mode='countMedia';
 
   return Promise.resolve()
@@ -39,31 +39,33 @@ module.exports.countMedia = function(params) {
       });
       root.children = children;
 
-      //format pack
-      // var diameter = 500;
+      //Elems are spread on a plan, diameter of a sphere, then mapped on the sphere
+      //compute pack layout. (on a plan)
+      var radius = param.radius; // pack is computed
       var pack = hierarchy.pack()
-      .size([100, 60])
+      .size([radius*2, radius*2])
       .padding(2);
-
+      // use log(value) because huge range(1,80000);
+      // slice the root node (not render)
       var nodes = pack(
         hierarchy.hierarchy(root)
-        //Math.log10(x)
-        .sum(function(d) { return Math.log10(d.value); })
-        // .sum(function(d) { return d.value })
+        .sum(function(d) { return Math.log(d.value); })
       ).descendants().slice(1);
       console.log(nodes);
-      //map 2D to 3D
-      var azimut = scale.scaleLinear().domain([0,1]).range([-50,50]);
-      var polar = scale.scaleLinear().domain([0,1]).range([-30,30]);
-      var radius = 4;
-      //format for unity3D
+
+      // map plan to sphere
+      // angle of display > PI * degree / 180 > center on 0 > [-a/2, +a/2]
+      var angle = Math.PI * param.angle / 180;
+      // map x,y from plan to polar,azimut in sphere
+      var angular = scale.scaleLinear().domain([0, radius * 2]).range([angle / -2, angle / 2]);
+      //format for unity3D light object + x,y,z from spherical coordinate
       var output = nodes.map(m => {
         return {name: m.data.name,
           value: m.data.value,
           r:m.r,
-          x:radius * Math.sin(polar(m.y)) * Math.cos(azimut(m.x)),
-          y:radius * Math.sin(polar(m.y)) * Math.sin(azimut(m.x)),
-          z:radius * Math.cos(polar(m.y))
+          x:radius * Math.sin(angular(m.y)) * Math.cos(angular(m.x)),
+          y:radius * Math.sin(angular(m.y)) * Math.sin(angular(m.x)),
+          z:radius * Math.cos(angular(m.y))
         }
       });
       resolve({galaxies:output});
