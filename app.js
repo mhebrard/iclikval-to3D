@@ -39,9 +39,8 @@ app.use('/universe', require('./routes/universe.js'));
 //listen
 app.listen(port, function() {
 	console.log('Server running on',port);
-	model.count().then(res => {
-		app.locals.universe = res;
-		console.log(app.locals.universe);
+	model.count().then(() => {
+		console.log(model.universe.get());
 		console.log('ready');
 	});
 })

@@ -1,27 +1,59 @@
 // require
 var http = require('http');
+var hierarchy = require('d3-hierarchy');
+var scale = require('d3-scale');
 var config = require('../config.json');
+
+//private variables
+var universe = {};
+module.exports.universe = {
+  get: function() { return universe; },
+  set: function(u) { universe = u; return u; }
+};
 
 module.exports.count = function() {
   console.log('count');
-  var galaxy = {};
   return Promise.resolve()
   .then(() => {
-    var p = {group:['media', 'media_type'], filter:{'reviewer':'tdtaylor', 'year':'2017'}};
+    var p = {group:['media', 'media_type'], filter:{'reviewer':'tdtaylor', 'year':'2017'}}; //only1chunts
     return queryCount(p);
   }).then(media => {
     return groupBy('media_type', media.result);
   }).then(types => {
     return galaxyNodes(types);
   }).then(obj => {
-    galaxy = obj;
-    var p = {group:['key', 'media_type'], filter:{'reviewer':'tdtaylor'}};
+    module.exports.universe.set(obj);
+    var p = {group:['key', 'media_type'], filter:{'reviewer':'only1chunts'}};
     return queryCount(p);
   }).then(annots => {
     return groupBy('key', annots.result);
   }).then(keys => {
-    return galaxyEdges(keys, galaxy);
+    return galaxyEdges(keys);
+  }).then(obj => {
+    module.exports.universe.set(obj);
+    return Promise.resolve();
   })
+  /* // options
+  .then(() => {
+    var p = {group:['reviewer', 'media_type'], filter:{}};
+    return queryCount(p);
+  }).then(annots => {
+    return groupBy('reviewer', annots.result);
+  }).then(out => {
+    // console.log('option', out);
+    return Promise.resolve(out);
+  }).then(out => {
+    var sel = out.reduce( (res, r) => {
+      if (r.count>2) {res.push(r);}
+      return res;
+    },[]);
+    sel.forEach(f => {
+      console.log(f.group);
+      console.log('\t', f.items);
+    })
+    // console.log('option', out);
+    return Promise.resolve(sel);
+  })*/
   .catch( error => {
     console.log('count:', error);
   });
@@ -105,8 +137,9 @@ function galaxyNodes(data) {
   });
 }
 
-function galaxyEdges(data, res) {
+function galaxyEdges(data) {
   return new Promise(function(resolve, reject) {
+    var res = module.exports.universe.get();
     // nodes list
     var nodes = Object.keys(res.nodes);
     data.forEach(f => {
@@ -138,5 +171,55 @@ function galaxyEdges(data, res) {
       });
     });
     resolve(res);
+  });
+}
+
+module.exports.toPack = function(param) {
+  return new Promise(function(resolve, reject) {
+    var univ = module.exports.universe.get();
+    // format root for d3
+    var root = {name:'root', children:[]};
+    var children = Object.keys(univ.nodes).map(m => {
+      return {name:univ.nodes[m].name, value:Number(univ.nodes[m].count)};
+    });
+    root.children = children;
+
+    //Elems are spread on a plan, diameter of a sphere, then mapped on the sphere
+    //compute pack layout. (on a plan)
+    var radius = param.radius;
+    var pack = hierarchy.pack()
+    .size([radius*2, radius*2])
+    .padding(2);
+    // use log(value) because huge range(1,80000);
+    // slice the root node (not render)
+    var nodes = pack(
+      hierarchy.hierarchy(root)
+      .sum(function(d) { return Math.log(d.value + 2); }) //avoid value = 0
+    ).descendants().slice(1);
+    // console.log('pack', nodes);
+
+    // map plan to sphere
+    // angle of display > PI * degree / 180
+    var angle = Math.PI * param.angle / 180;
+    // map x,y from plan to polar,azimut in sphere
+    var angular = scale.scaleLinear().domain([0, radius * 2]).range([0, angle]);
+    // format for unity3D light object + x,y,z from spherical coordinate
+    var output = nodes.map(m => {
+      return {name: m.data.name,
+        value: m.data.value,
+        r:m.r,
+        x:radius * Math.sin(angular(m.y)) * Math.cos(angular(m.x)),
+        y:radius * Math.sin(angular(m.y)) * Math.sin(angular(m.x)),
+        z:radius * Math.cos(angular(m.y))
+      }
+    });
+    // console.log(output);
+
+    // format edges to array
+    var edges = Object.keys(univ.edges).map( m => {
+      return univ.edges[m];
+    });
+
+    resolve({nodes:output, edges:edges});
   });
 }

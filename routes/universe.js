@@ -2,7 +2,7 @@ var express = require('express');
 var path = require('path');
 var config = require('../config.json');
 var router = express.Router();
-var model = require('../model.js');
+var model = require('../model/model.js');
 
 router.use(function(req, res, next) {
   res.header("Access-Control-Allow-Origin", "*");
@@ -12,8 +12,9 @@ router.use(function(req, res, next) {
 
 router.post('/',[require('../middlewares/authentify')],function(req,res) {
 	console.log('UNIVERSE');
-  model.countMedia(req.body)
+  model.toPack(req.body)
   .then(function(data) {
+    console.log('to pack', data);
     console.log('SEND universe');
 	  res.writeHead(200, {
   		'Content-Type': 'application/json',
