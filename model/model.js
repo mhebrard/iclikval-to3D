@@ -23,7 +23,7 @@ module.exports.count = function() {
     return galaxyNodes(types);
   }).then(obj => {
     module.exports.universe.set(obj);
-    var p = {group:['key', 'media_type'], filter:{'reviewer':'only1chunts'}};
+    var p = {group:['key', 'media_type'], filter:{'reviewer':'tdtaylor', 'year':'2016'}};
     return queryCount(p);
   }).then(annots => {
     return groupBy('key', annots.result);
@@ -217,8 +217,15 @@ module.exports.toPack = function(param) {
 
     // format edges to array
     var edges = Object.keys(univ.edges).map( m => {
-      return univ.edges[m];
+      e = univ.edges[m];
+      console.log(e);
+      return {source: e.source,
+        target: e.target,
+        count: e.count,
+        value: e.count ? Math.log(e.count + 2) : 0 // avoid value = 0 if count != 0
+      };
     });
+    console.log(edges);
 
     resolve({nodes:output, edges:edges});
   });
