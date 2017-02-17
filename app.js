@@ -39,16 +39,10 @@ app.use('/galaxy', require('./routes/galaxy.js'));
 //listen
 app.listen(port, function() {
 	console.log('Server running on',port);
-	model.count().then(() => {
+	var params = {filters:{'year':'2017'}};
+	model.universe.request(params)
+	.then(() => {
 		console.log('Universe', model.universe.get());
 		console.log('ready');
-		/**/
-		model.getGalaxy({type:'journal_article'})
-		.then(() => {
-			var g = model.galaxy.get();
-			console.log("Galaxy:" + g);
-			console.log('nodes', g.nodes);
-			console.log('edges', g.edges);
-		})
 	});
 })
