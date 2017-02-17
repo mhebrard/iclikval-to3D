@@ -6,9 +6,14 @@ var config = require('../config.json');
 
 //private variables
 var universe = {};
+var galaxy = {};
 module.exports.universe = {
   get: function() { return universe; },
   set: function(u) { universe = u; return u; }
+};
+module.exports.galaxy = {
+  get: function() { return galaxy; },
+  set: function(g) { galaxy = g; return g; }
 };
 
 module.exports.count = function() {
@@ -20,7 +25,7 @@ module.exports.count = function() {
   }).then(media => {
     return groupBy('media_type', media.result);
   }).then(types => {
-    return galaxyNodes(types);
+    return universeNodes(types);
   }).then(obj => {
     module.exports.universe.set(obj);
     var p = {group:['key', 'media_type'], filter:{'reviewer':'tdtaylor', 'year':'2016'}};
@@ -28,7 +33,7 @@ module.exports.count = function() {
   }).then(annots => {
     return groupBy('key', annots.result);
   }).then(keys => {
-    return galaxyEdges(keys);
+    return universeEdges(keys);
   }).then(obj => {
     module.exports.universe.set(obj);
     return Promise.resolve();
@@ -121,7 +126,7 @@ function groupBy(key, data) {
 
 }
 
-function galaxyNodes(data) {
+function universeNodes(data) {
   return new Promise(function(resolve, reject) {
     var res = {nodes:{}, edges:{}};
     var types = data.map(m => m.group);
@@ -137,7 +142,7 @@ function galaxyNodes(data) {
   });
 }
 
-function galaxyEdges(data) {
+function universeEdges(data) {
   return new Promise(function(resolve, reject) {
     var res = module.exports.universe.get();
     // nodes list
@@ -228,5 +233,80 @@ module.exports.toPack = function(param) {
     console.log(edges);
 
     resolve({nodes:output, edges:edges});
+  });
+}
+
+module.exports.getGalaxy = function(param) {
+  return Promise.resolve()
+  // nodes
+  .then(() => {
+    var p = {group:['media'], filter:{'reviewer':'tdtaylor', 'year':'2017', 'media_type': param.type}}; //only1chunts
+    return queryCount(p);
+  }).then(media => {
+    // console.log(media.result);
+    // console.log('[0]', media.result[0]);
+    return galaxyNodes(media.result);
+  }).then(obj => {
+    module.exports.galaxy.set(obj);
+    var p = {group:['key', 'media'], filter:{'reviewer':'tdtaylor', 'year':'2017', 'media_type': param.type}};
+    return queryCount(p);
+  }).then(annots => {
+    return groupBy('key', annots.result);
+  }).then(keys => {
+    return GalaxyEdges(keys);
+  }).then(obj => {
+    module.exports.galaxy.set(obj);
+    return Promise.resolve();
+  })/*.then(out => {
+    console.log(out);
+    return Promise.resolve(out);
+  })*/
+}
+
+function galaxyNodes(data) {
+  return new Promise(function(resolve, reject) {
+    var res = {nodes:{}, edges:{}};
+    data.forEach(f => {
+      res.nodes['i'+f.group.media.id] = {name:f.group.media.id, count:f.count}
+    })
+    resolve(res);
+  });
+}
+
+function GalaxyEdges(data) {
+  return new Promise(function(resolve, reject) {
+    var res = module.exports.galaxy.get();
+    // nodes list
+    var nodes = Object.keys(res.nodes);
+    data.forEach(f => {
+      //intra edge
+      f.items.forEach((g, i) => {
+        var source = g.group.media.id;
+        /* // intra link
+        if(g.count > 1) {
+          if(!res.edges[`${source}_${source}`]) {
+            res.edges[`${source}_${source}`] = {source:source, target: source, count:0};
+          }
+          res.edges[`${source}_${source}`].count++;
+        }
+        */
+        // cross links
+        if (f.items.length > 1) {
+          for (j=i+1; j<f.items.length; j++) {
+            var target = f.items[j].group.media.id;
+            var sidx = nodes.indexOf('i'+source);
+            var tidx = nodes.indexOf('i'+target);
+            var s = Math.min(sidx, tidx);
+            var t = Math.max(sidx, tidx);
+
+            if(!res.edges[`${nodes[s]}_${nodes[t]}`]) {
+              res.edges[`${nodes[s]}_${nodes[t]}`] = {source:nodes[s], target: nodes[t], count:0};
+            }
+            res.edges[`${nodes[s]}_${nodes[t]}`].count++;
+          }
+        }
+      });
+    });
+    resolve(res);
   });
 }
