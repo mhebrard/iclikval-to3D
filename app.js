@@ -42,7 +42,17 @@ app.listen(port, function() {
 	var params = {filters:{'year':'2017'}};
 	model.universe.request(params)
 	.then(() => {
-		console.log('Universe', model.universe.get());
+		var univ = model.universe.get()
+		console.log('Universe Nodes Count', univ.nodes.length)
+		console.log('Universe Node[0]', univ.nodes[0]);
+		console.log('Universe Edges Count', univ.edges.length)
+		console.log('Universe Node[0]', univ.edges[0]);
 		console.log('ready');
 	});
+	/**/
+	/* params.filters['media_type'] = 'journal_article';
+	model.galaxy.request(params).then(() => {
+		//console.log('Galaxy', model.galaxy.get())
+		return Promise.resolve();
+	}); */
 })
