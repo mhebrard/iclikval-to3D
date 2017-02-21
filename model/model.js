@@ -247,30 +247,79 @@ module.exports.toPack = function(param) {
 
 module.exports.toForce3D = function(graph, params) {
   return new Promise(function(resolve, reject) {
-    // create XY forces
-    var forceXY = force.forceSimulation()
-      .force('collide', force.forceCollide().radius(d => Math.log(d.count + 2)))
-      .force('link', force.forceLink().id(d => d.name));
+    // create stimul
+    var forceXY = force.forceSimulation();
+    var forceZY = force.forceSimulation();
+console.log(1);
+
+  // create forces
+  forceXY
+    .force('collide', force.forceCollide().radius(d => Math.log(d.count + 2)))
+    .force('link', force.forceLink().id(d => d.name));
+  forceZY
+    .force('collide', force.forceCollide().radius(d => Math.log(d.count + 2)))
+    .force('link', force.forceLink().id(d => d.name));
+console.log(2);
+
+    //tick
+    forceXY.on('tick', tickedXY);
+    forceXY.on('end', end);
+
+    forceZY.on('tick', tickedZY);
+    forceXY.on('end', end);
+
+
+    function tickedXY() {
+      console.log('tick X');
+      forceXY.stop();
+      forceZY.restart();
+    }
+
+    function tickedZY() {
+      console.log('tick Z');
+      forceZY.stop();
+      forceXY.restart();
+    }
+
+    function end() {
+      console.log('end');
+      forceXY.stop();
+      forceZY.stop();
+      resolve(graph)
+    }
+/*
     // assign nodes
     forceXY.nodes(graph.nodes)
       .on('tick', tickedXY())
-      .on('stop', endXY());
+      .on('stop', end());
     //assign edges
     forceXY.force('link').links(graph.edges);
     // create ZY forces
-    /* var forceZY = force.forceSimulation()
-      .force('collide', force.forceCollide().radius(d => Math.log(d.count + 2)))
-      .force('link', force.forceLink().id(d => d.name).links(graph.edges))
-    */// start stimulation
+console.log(3);
 
-    // wait for stop
-    function tickedXY() {
-      console.log('tick');
-    }
-    function endXY() {
+    // assign nodes
+    forceZY.nodes(graph.nodes)
+      .on('tick', tickedZY())
+      .on('stop', end());
+    //assign edges
+    forceZY.force('link').links(graph.edges);
+console.log(4);
+*/
+
+
+  /*  function end() {
+      console.log('tick end');
+      graph.nodes.forEach(f => {
+        //get x
+        f.x = f.tx;
+        //get z
+        f.z = f.tz;
+      });
       resolve(graph);
     }
     // format output graph
+
+    */
   });
 }
 
