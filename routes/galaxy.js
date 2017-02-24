@@ -24,16 +24,15 @@ router.post('/',[require('../middlewares/authentify')],function(req,res) {
     console.log('Galaxy Nodes Count', g.nodes.length)
 		console.log('Galaxy Node[0]', g.nodes[0]);
 		console.log('Galaxy Edges Count', g.edges.length)
-		console.log('Galaxy Node[0]', g.edges[0]);
+		console.log('Galaxy Edge[0]', g.edges[0]);
 
     return model.toForce3D(g);
   }).then(data => {
     console.log('AFTER Forces');
     console.log('Galaxy Nodes Count', data.nodes.length)
 		console.log('Galaxy Node[0]', data.nodes[0]);
-    console.log('Galaxy Node[1]', data.nodes[1]);
-		// console.log('Galaxy Edges Count', data.edges.length)
-		// console.log('Galaxy Node[0]', data.edges[0]);
+    console.log('Galaxy Edges Count', data.edges.length)
+		console.log('Galaxy Edges[0]', data.edges[0]);
 		// console.log('SEND galaxy');
 	  res.writeHead(200, {
   		'Content-Type': 'application/json',

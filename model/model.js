@@ -224,7 +224,7 @@ module.exports.toPack = function(param) {
     var output = nodes.map(m => {
       return {name: m.data.name,
         count: m.data.count,
-        r:m.r,
+        value:m.r,
         x:radius * Math.sin(angular(m.y)) * Math.cos(angular(m.x)),
         y:radius * Math.sin(angular(m.y)) * Math.sin(angular(m.x)),
         z:radius * Math.cos(angular(m.y))
@@ -247,36 +247,73 @@ module.exports.toPack = function(param) {
 
 module.exports.toForce3D = function(graph, params) {
   return new Promise(function(resolve, reject) {
+    // init nodes
+    // spead on z
+    graph.nodes.forEach((f, i) => {
+      f.value = Math.log(f.count + 2);
+      f.x = f.tx = 0;
+      f.vx = f.tvx = 0;
+      f.y = 0;
+      f.vy = 0;
+      f.z = f.tz = i;
+      f.vz = f.tvz = 0;
+    })
+
     // create stimul
-    var forceXY = force.forceSimulation();
-    var forceZY = force.forceSimulation();
-console.log(1);
+    var forceXY = force.forceSimulation()
+      .nodes(graph.nodes)
+      .force('center', force.forceCenter(6,6))
+      .force('collide', force.forceCollide()
+        .radius(d => d.value)
+      )
+      .force('link', force.forceLink()
+        .links(graph.edges)
+        .id(d => d.name)
+        // .strength(d => d.count)
+      )
+      .on('tick', tickedXY)
+      .on('end', end)
+    ;
 
-  // create forces
-  forceXY
-    .force('collide', force.forceCollide().radius(d => Math.log(d.count + 2)))
-    .force('link', force.forceLink().id(d => d.name));
-  forceZY
-    .force('collide', force.forceCollide().radius(d => Math.log(d.count + 2)))
-    .force('link', force.forceLink().id(d => d.name));
-console.log(2);
-
-    //tick
-    forceXY.on('tick', tickedXY);
-    forceXY.on('end', end);
-
-    forceZY.on('tick', tickedZY);
-    forceXY.on('end', end);
-
-
+    var forceZY = force.forceSimulation()
+      .nodes(graph.nodes)
+      .force('center', force.forceCenter(6,6))
+      .force('collide', force.forceCollide()
+        .radius(d => d.value)
+      )
+      .force('link', force.forceLink()
+        .links(graph.edges)
+        .id(d => d.name)
+        // .strength(d => d.count)
+      )
+      .on('tick', tickedZY)
+      .on('end', end)
+    ;
     function tickedXY() {
-      console.log('tick X');
-      forceXY.stop();
-      forceZY.restart();
+      // console.log('tick X');
+      graph.nodes.forEach(f => {
+        //save X
+        f.tx = f.x;
+        f.tvx = f.vx
+        // get z
+        f.x = f.tz;
+        f.vx = f.tvz;
+      });
+        // change axes
+        forceXY.stop();
+        forceZY.restart();
     }
 
     function tickedZY() {
-      console.log('tick Z');
+      // console.log('tick Z');
+      graph.nodes.forEach(f => {
+        //save z
+        f.tz = f.x;
+        f.tvz = f.vx
+        // get x
+        f.x = f.tx;
+        f.vx = f.tvx;
+      });
       forceZY.stop();
       forceXY.restart();
     }
@@ -285,41 +322,13 @@ console.log(2);
       console.log('end');
       forceXY.stop();
       forceZY.stop();
+      // simplify the edges
+      res = graph.edges.map(m => {
+        return {source: m.source.name, target:m.target.name, count:m.count, value: Math.log(m.count + 2)};
+      })
+      graph.edges = res;
       resolve(graph)
     }
-/*
-    // assign nodes
-    forceXY.nodes(graph.nodes)
-      .on('tick', tickedXY())
-      .on('stop', end());
-    //assign edges
-    forceXY.force('link').links(graph.edges);
-    // create ZY forces
-console.log(3);
-
-    // assign nodes
-    forceZY.nodes(graph.nodes)
-      .on('tick', tickedZY())
-      .on('stop', end());
-    //assign edges
-    forceZY.force('link').links(graph.edges);
-console.log(4);
-*/
-
-
-  /*  function end() {
-      console.log('tick end');
-      graph.nodes.forEach(f => {
-        //get x
-        f.x = f.tx;
-        //get z
-        f.z = f.tz;
-      });
-      resolve(graph);
-    }
-    // format output graph
-
-    */
   });
 }
 
@@ -350,7 +359,8 @@ function galaxyRequest(param) {
 
 function galaxyNodes(data) {
   return new Promise(function(resolve, reject) {
-    var res = module.exports.galaxy.get();
+    // var res = module.exports.galaxy.get();
+    var res = {nodes:[], edges:[]};
     res.nodes = data.map(m => {
       return {name:m.group.media.id, count:m.count}
     })
