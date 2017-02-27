@@ -1,11 +1,174 @@
 // require
 var http = require('http');
-var force = require('d3-force');
+// var force = require('d3-force');
 var hierarchy = require('d3-hierarchy');
 var scale = require('d3-scale');
 var config = require('../config.json');
 
-//private variables
+var collections = require('./collections.json');
+
+module.exports.count = {
+  // data: collections,
+  get: function() { return collections; },
+  request: function(param) { return countRequest(this, param); },
+  updated: function() { collections.updated = new Date(); }
+};
+
+function countRequest(count, p) {
+  return Promise.resolve().then(() => {
+    // query ick: count annots by media
+    var param = {group: ['media', 'media_type'], filter: p.filters}; // only1chunts
+    return queryCount(param);
+  }).then(annots => {
+    // save top media
+    var top = annots.result[0];
+    compareTop(count.get().root.top, top.group.media, top.group.media_type, top.count);
+
+    // console.log('annots[0].group (media + media_type)', annots.result[0].group);
+    // console.log('annot[0].count (nb of annots)', annots.result[0].count);
+    // console.log('ANNOTS', count.get());
+
+    // group by media type
+    return groupBy('media_type', annots.result);
+  }).then(types => {
+    // console.log('types.length', types.length);
+    // console.log('types[0].group (media_type)', types[0].group);
+    // console.log('types[0].count (nb of media)', types[0].count);
+    // console.log('types[0].items[0].group (media + media_type)', types[0].items[0].group);
+    // console.log('types[0].items[0].count (nb of annots)', types[0].items[0].count);
+    return countNodes(count.get(), types);
+  }).then(() => {
+    // console.log('nodes.length', nodes.length);
+    // console.log('col.nodes', col.nodes);
+    // update date time
+    count.updated();
+    // console.log("MID", collections.root);
+    // compute position
+    return toPack(count.get(), p);
+  }).then(pack => {
+    // console.log('PACK', pack);
+    return countPosition(count.get(), pack, p);
+  })
+  /* .then(() => {
+    // Write file for save
+  })
+  */.then(() => {
+    return Promise.resolve(count.get());
+  }).catch(err => {
+    console.log('countRequest:', err);
+  });
+}
+
+function compareTop(ctop, ntop, ntype, nannots) {
+  // console.log(`if ${nannots} > ${ctop.annots}`);
+  if (nannots > ctop.annots) {
+    ctop.id = ntop.id;
+    ctop.title = ntop.title;
+    ctop.annots = nannots;
+    ctop.type = ntype;
+  }
+}
+
+function countNodes(res, data) {
+  return new Promise(function(resolve) {
+    // Add data nodes in res nodes
+    // update top for each nodes
+
+    // map existing nodes
+    var nMap = {};
+    // var nodes = res.nodes;
+    res.nodes.forEach((n, i) => {
+      nMap[n.name] = i;
+    });
+
+    // add counts
+    data.forEach(d => {
+      // if node not exist, add node
+      if (!nMap[d.group]) {
+        nMap[d.group] = res.nodes.length;
+        res.nodes.push({
+          name: d.group,
+          count: 0,
+          annots: 0,
+          top: {annots: 0}
+        });
+      }
+      // get collections node
+      var node = res.nodes[nMap[d.group]];
+      // add count
+      node.count += d.count;
+      res.root.count += d.count;
+      // sum annotations from each items
+      var sum = d.items.reduce((tot, i) => {
+        tot += i.count;
+        return tot;
+      }, 0);
+      node.annots += sum;
+      res.root.annots += sum;
+      // save top media
+      // console.log('ITEMS', d.items[0].count, d.items[1].count, d.items[2].count, d.items[3].count, d.items[4].count);
+      var top = d.items[0];
+      compareTop(node.top, top.group.media, top.group.media_type, top.count);
+    });
+    resolve();
+  });
+}
+
+function toPack(data, p) {
+  return new Promise(function(resolve) {
+    // create root for pack
+    var root = {
+      name: data.root.name,
+      children: [],
+      value: data.root.count,
+      node: data.root
+    };
+
+    // add nodes
+    data.nodes.forEach(n => {
+      root.children.push({
+        name: n.name,
+        value: n.count,
+        node: n
+      });
+    });
+
+    // create pack layout
+    var layout = hierarchy.pack()
+    .size([p.radius * 2, p.radius * 2]);
+    // .padding(2);
+
+    // compute layout
+    var nodes = layout(
+      hierarchy.hierarchy(root)
+      .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
+    ).descendants().slice(1);
+
+    resolve(nodes);
+  });
+}
+
+function countPosition(res, data, p) {
+  return new Promise(function(resolve, reject) {
+    // scale
+    var s = scale.scaleLinear().domain([0, p.radius * 2]).range([-p.radius, p.radius]);
+    // nodes
+    data.forEach(d => {
+      // console.log("D", d);
+      var n = d.data.node;
+      if (n.name === d.data.name) {
+        n.r = d.r;
+        n.x = s(d.x);
+        n.y = s(d.y);
+      } else {
+        reject(new Error(`model.js/countPosition: ${n} != ${d.data.name}`));
+      }
+    });
+    resolve();
+  });
+}
+
+// private variables
 var universe = {nodes:[], edges:[]};
 var galaxy = {nodes:[], edges:[]};
 module.exports.universe = {
@@ -165,7 +328,7 @@ function universeEdges(data) {
   });
 }
 
-module.exports.toPack = function(param) {
+/* module.exports.toPack = function(param) {
   return new Promise(function(resolve, reject) {
     var univ = module.exports.universe.get();
     // format root for d3
@@ -185,9 +348,9 @@ module.exports.toPack = function(param) {
       .sum(function(d) { return Math.log(d.count + 2); }) //avoid value = 0
     ).descendants().slice(1);
     // console.log('pack', nodes);
-
+    */
     /* GRID */
-    if(param.grid) {
+    /* if(param.grid) {
       nodes.push({ data:{name:'00', value:5}, value:Math.log(5+2), r:0.2, x:0, y:0 })
       nodes.push({ data:{name:'02', value:5}, value:Math.log(5+2), r:0.2, x:0, y:2 })
       nodes.push({ data:{name:'04', value:5}, value:Math.log(5+2), r:0.2, x:0, y:4 })
@@ -244,7 +407,7 @@ module.exports.toPack = function(param) {
     resolve({nodes:output, edges:edges});
   });
 }
-
+*/
 module.exports.toForce3D = function(graph, params) {
   return new Promise(function(resolve, reject) {
     // init nodes
