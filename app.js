@@ -33,12 +33,12 @@ app.get('/', function(req, res) {
 });
 
 app.use('/all', require('./routes/all.js'));
-app.use('/galaxy', require('./routes/galaxy.js'));
+app.use('/catalogue', require('./routes/catalogue.js'));
 
 // listen
 app.listen(port, function() {
   console.log(`Server running on ${port}`);
-  var param = {filters: {year: '2017'}, radius: 5};
+  var param = {filters: {year: '2017'}, radius: 6};
   model.count.request(param).then(c => {
     console.log('Nodes Count', c.nodes.length);
     // console.log('Nodes', c.nodes);

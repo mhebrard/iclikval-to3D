@@ -1,5 +1,6 @@
 // require
 var http = require('http');
+var request = require('request');
 // var force = require('d3-force');
 var hierarchy = require('d3-hierarchy');
 var scale = require('d3-scale');
@@ -12,6 +13,49 @@ module.exports.count = {
   get: function() { return collections; },
   request: function(param) { return countRequest(this, param); },
   updated: function() { collections.updated = new Date(); }
+};
+
+module.exports.getTree = function(p) {
+  return Promise.resolve().then(() => {
+    // get annots of selected media
+    var param = {media: p.media};
+    return queryAnnot(param);
+  }).then(res => {
+    // console.log('fist res', res);
+    // foreach annot
+    // var queue = [];
+    // res._embedded.annotation.forEach(a => {
+    // for (var i = 12; i < 13; i++) {
+    var i = 12;
+    var a = res._embedded.annotation[i];
+      // console.log(i, a.key, a.relationship, a.value);
+      // get media with same key + rel + value (+ filter type)
+      // var param = {key: a.key, relationship: a.relationship, value: a.value};
+    var param = {since: '2017-01-01', value: a.value, relationship: a.relationship, key: a.key};
+    if (p.media_type) {
+      param.media_type = p.media_type;
+    }
+    console.log(i, param);
+      // queue.push(queryAnnot(param));
+    return queryAnnot(param);
+      // get media_id + media_type + title
+     // }
+    // return Promise.all(queue);
+  }).then(res => {
+    console.log('END - value', res.total_items);
+    // console.log('RES', res);
+    // });
+    // sort linked media by shared annot
+    return treeNodes(res._embedded.annotation);
+  }).then(nodes => {
+    console.log('node:', nodes[0]);
+    // compute coords
+    return toSpiral(nodes, p);
+  }).then(res => {
+    console.log('card:', res.cards[0]);
+    // send list to unity
+    return Promise.resolve(res);
+  });
 };
 
 function countRequest(count, p) {
@@ -40,21 +84,22 @@ function countRequest(count, p) {
   }).then(() => {
     // console.log('nodes.length', nodes.length);
     // console.log('col.nodes', col.nodes);
+
     // update date time
     count.updated();
-    // console.log("MID", collections.root);
+
     // compute position
-    return toPack(count.get(), p);
-  }).then(pack => {
-    // console.log('PACK', pack);
-    return countPosition(count.get(), pack, p);
+    // PACK LAYOUT //
+    // return toPack(count.get(), p);
+
+    // CIRCULAR LAYOUT //
+    return toCircle(count.get(), p);
   })
-  /* .then(() => {
+  /* .then(data => {
     // Write file for save
   })
-  */.then(() => {
-    return Promise.resolve(count.get());
-  }).catch(err => {
+  */
+  .catch(err => {
     console.log('countRequest:', err);
   });
 }
@@ -115,7 +160,7 @@ function countNodes(res, data) {
 }
 
 function toPack(data, p) {
-  return new Promise(function(resolve) {
+  return new Promise(function(resolve, reject) {
     // create root for pack
     var root = {
       name: data.root.name,
@@ -123,13 +168,12 @@ function toPack(data, p) {
       value: data.root.count,
       node: data.root
     };
-
     // add nodes
     data.nodes.forEach(n => {
       root.children.push({
         name: n.name,
         value: n.count,
-        node: n
+        // node: n
       });
     });
 
@@ -144,65 +188,107 @@ function toPack(data, p) {
       .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
     ).descendants().slice(1);
 
-    resolve(nodes);
-  });
-}
-
-function countPosition(res, data, p) {
-  return new Promise(function(resolve, reject) {
     // scale
     var s = scale.scaleLinear().domain([0, p.radius * 2]).range([-p.radius, p.radius]);
-    // nodes
-    data.forEach(d => {
-      // console.log("D", d);
-      var n = d.data.node;
-      if (n.name === d.data.name) {
-        n.r = d.r;
-        n.x = s(d.x);
-        n.y = s(d.y);
+
+    // assign positions
+    nodes.forEach((n, i) => {
+      var d = data.nodes[i];
+      if (d.name === n.data.name) {
+        d.r = n.r;
+        d.x = s(n.x);
+        d.y = s(n.y);
       } else {
-        reject(new Error(`model.js/countPosition: ${n} != ${d.data.name}`));
+        reject(new Error(`model.js/countPosition: ${n.data.name} != ${d.name}`));
       }
     });
-    resolve();
+    resolve(data);
   });
 }
 
-// private variables
-var universe = {nodes:[], edges:[]};
-var galaxy = {nodes:[], edges:[]};
-module.exports.universe = {
-  get: function() { return universe; },
-  set: function(u) { universe = u; return u; },
-  request: function(p) { return universeRequest(p); }
-};
-module.exports.galaxy = {
-  get: function() { return galaxy; },
-  set: function(g) { galaxy = g; return g; },
-  request: function(p) { return galaxyRequest(p); }
-};
+function toCircle(data, p) {
+  return new Promise(function(resolve, reject) {
+    // create root for pack
+    var root = {
+      name: data.root.name,
+      children: [],
+      value: 0
+    };
+    // add nodes
+    data.nodes.forEach(n => {
+      root.children.push({
+        name: n.name,
+        value: n.count
+        // node: n
+      });
+    });
+
+    // create pack layout
+    var layout = hierarchy.partition();
+    // .size([p.radius * 2, p.radius * 2]);
+    // .padding(2);
+
+    // compute layout
+    /* var nodes = layout(
+      hierarchy.hierarchy(root)
+      .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
+    ).descendants().slice(1);
+    */
+
+    var nodes = layout(
+      hierarchy.hierarchy(root)
+      .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
+    ).descendants().slice(1);
+
+    // scale
+    var x = scale.scaleLinear().domain([0, 1]).range([0, 2 * Math.PI]);
+    var y = scale.scaleLinear().domain([0, 1]).range([0, p.radius]);
+
+    // assign positions
+    nodes.forEach((n, i) => {
+      var d = data.nodes[i];
+      // console.log(`${d.name}: 0[${n.x0},${n.y0}], 1[${n.x1},${n.y1}]`);
+      if (d.name === n.data.name) {
+        // center
+        var c = {
+          x: (n.x0 + n.x1) / 2,
+          y: (n.y0 + n.y1) / 2
+        };
+        d.r = y((n.x1 - n.x0) / 2);
+        // d.x = x(c.x) * Math.cos(y(c.y));
+        // d.y = x(c.x) * Math.sin(y(c.y));
+        d.x = p.radius * Math.cos(x(c.x));
+        d.y = p.radius * Math.sin(x(c.x));
+        // console.log(`${d.name}: [${d.x},${d.y}], r:${d.r}`);
+      } else {
+        reject(new Error(`model.js/countPosition: ${n.data.name} != ${d.name}`));
+      }
+    });
+    resolve(data);
+  });
+}
 
 function queryCount(p) {
   return new Promise(function(resolve, reject) {
     var data = JSON.stringify(p);
     var options = {
       host: 'api.iclikval.riken.jp',
-  		port: 80,
-  		path: `/annotation-count`,
-  		method: 'POST',
-  		headers: {
-  			'Accept': 'application/json',
-  			'Content-Type': 'application/json',
-  	    'Authorization': `Bearer ${config.token}`,
+      port: 80,
+      path: `/annotation-count`,
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.token}`,
         'Content-Length': Buffer.byteLength(data)
-  		}
-    }
+      }
+    };
 
     var req = http.request(options, res => {
       res.setEncoding('utf8');
       var body = '';
       res.on('data', chunk => {
-          body += chunk;
+        body += chunk;
       });
       res.on('end', () => {
         try {
@@ -211,15 +297,15 @@ function queryCount(p) {
             console.log(result.trace);
             reject(Error('query error'));
           } else {
-            resolve(result)
+            resolve(result);
           }
-        } catch(err) {
-          reject(Error('annot-count parse', err))
+        } catch (err) {
+          reject(Error('annot-count parse', err));
         }
       });
     });
     req.on('error', err => {
-      reject(Error('annot-count request', err))
+      reject(Error('annot-count request', err));
     });
     req.write(data);
     req.end();
@@ -231,183 +317,90 @@ function groupBy(key, data) {
     var group = {};
     data.forEach(f => {
       var k = f.group[key];
-      if (!group[k]) { group[k] = []; }
+      if (!group[k]) {
+        group[k] = [];
+      }
       group[k].push(f);
     });
     // obj to array
-    var res = Object.keys(group).map(m =>{
-      return {group:m, items:group[m], count:group[m].length};
+    var res = Object.keys(group).map(m => {
+      return {group: m, items: group[m], count: group[m].length};
     });
     // return
     resolve(res);
   });
-
 }
 
-function universeRequest(param) {
-  return Promise.resolve()
-  .then(() => {
-    var p = {group:['media', 'media_type'], filter:param.filters}; //only1chunts
-    return queryCount(p);
-  }).then(media => {
-    return groupBy('media_type', media.result);
-  }).then(types => {
-    return universeNodes(types);
-  }).then(obj => {
-    module.exports.universe.set(obj);
-    var p = {group:['key', 'media_type'], filter:param.filters};//{reviewer:'tdtaylor', year:'2017'}};
-    return queryCount(p);
-  }).then(annots => {
-    return groupBy('key', annots.result);
-  }).then(keys => {
-    return universeEdges(keys);
-  }).then(obj => {
-    module.exports.universe.set(obj);
-    return Promise.resolve();
-  })
-  .catch( error => {
-    console.log('count:', error);
-  });
-}
-
-function universeNodes(data) {
+function queryAnnot(p) {
+  // reviewer, media, key, value, relationship, language, source, media_type, media_title, since, until, sort
   return new Promise(function(resolve, reject) {
-    var res = module.exports.universe.get();
-    res.nodes = data.map(m => {
-      return {name:m.group, count:m.count}
-    })
-    resolve(res);
-  });
-}
+    var options = {
+      url: 'http://api.iclikval.riken.jp/annotation',
+      qs: p,
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${config.token}`
+      }
+    };
 
-function universeEdges(data) {
-  return new Promise(function(resolve, reject) {
-    var res = module.exports.universe.get();
-    var nList = res.nodes.map(m => {
-      return m.name;
-    })
-    var eMap = {};
-    // nodes list
-    data.forEach(f => {
-      f.items.forEach((g, i) => {
-        var source = g.group.media_type;
-        // intra link
-        if(g.count > 1) {
-          // if new
-          if(eMap[`${source}_${source}`] === undefined) {
-            eMap[`${source}_${source}`] = res.edges.length;
-            res.edges.push({source:source, target: source, count:0});
-          }
-          // count + 1
-          var idx = eMap[`${source}_${source}`]
-          res.edges[idx].count++;
-        }
-        // cross links
-        if (f.items.length > 1) {
-          var sidx = nList.indexOf(source);
-          for (j=i+1; j<f.items.length; j++) {
-            var target = f.items[j].group.media_type;
-            var tidx = nList.indexOf(target);
-            var s = Math.min(sidx, tidx);
-            var t = Math.max(sidx, tidx);
-            // if new
-            if(eMap[`${nList[s]}_${nList[t]}`] === undefined) {
-              eMap[`${nList[s]}_${nList[t]}`] = res.edges.length;
-              res.edges.push({source:nList[s], target:nList[t], count:0});
-            }
-            // count + 1
-            var idx = eMap[`${nList[s]}_${nList[t]}`]
-            res.edges[idx].count++;
-          }
-        }
-      });
-    });
-    nList=0;
-    eMap=0;
-    resolve(res);
-  });
-}
-
-/* module.exports.toPack = function(param) {
-  return new Promise(function(resolve, reject) {
-    var univ = module.exports.universe.get();
-    // format root for d3
-    var root = {name:'root', children:[]};
-    root.children = univ.nodes;
-
-    //Elems are spread on a plan, diameter of a sphere, then mapped on the sphere
-    //compute pack layout. (on a plan)
-    var radius = param.radius;
-    var pack = hierarchy.pack()
-    .size([radius*2, radius*2])
-    .padding(2);
-    // use log(value) because huge range(1,80000);
-    // slice the root node (not render)
-    var nodes = pack(
-      hierarchy.hierarchy(root)
-      .sum(function(d) { return Math.log(d.count + 2); }) //avoid value = 0
-    ).descendants().slice(1);
-    // console.log('pack', nodes);
-    */
-    /* GRID */
-    /* if(param.grid) {
-      nodes.push({ data:{name:'00', value:5}, value:Math.log(5+2), r:0.2, x:0, y:0 })
-      nodes.push({ data:{name:'02', value:5}, value:Math.log(5+2), r:0.2, x:0, y:2 })
-      nodes.push({ data:{name:'04', value:5}, value:Math.log(5+2), r:0.2, x:0, y:4 })
-      nodes.push({ data:{name:'06', value:5}, value:Math.log(5+2), r:0.2, x:0, y:6 })
-      nodes.push({ data:{name:'08', value:5}, value:Math.log(5+2), r:0.2, x:0, y:8 })
-      nodes.push({ data:{name:'20', value:5}, value:Math.log(5+2), r:0.2, x:2, y:0 })
-      nodes.push({ data:{name:'22', value:5}, value:Math.log(5+2), r:0.2, x:2, y:2 })
-      nodes.push({ data:{name:'24', value:5}, value:Math.log(5+2), r:0.2, x:2, y:4 })
-      nodes.push({ data:{name:'26', value:5}, value:Math.log(5+2), r:0.2, x:2, y:6 })
-      nodes.push({ data:{name:'28', value:5}, value:Math.log(5+2), r:0.2, x:2, y:8 })
-      nodes.push({ data:{name:'40', value:5}, value:Math.log(5+2), r:0.2, x:4, y:0 })
-      nodes.push({ data:{name:'42', value:5}, value:Math.log(5+2), r:0.2, x:4, y:2 })
-      nodes.push({ data:{name:'44', value:5}, value:Math.log(5+2), r:0.2, x:4, y:4 })
-      nodes.push({ data:{name:'46', value:5}, value:Math.log(5+2), r:0.2, x:4, y:6 })
-      nodes.push({ data:{name:'48', value:5}, value:Math.log(5+2), r:0.2, x:4, y:8 })
-      nodes.push({ data:{name:'60', value:5}, value:Math.log(5+2), r:0.2, x:6, y:0 })
-      nodes.push({ data:{name:'62', value:5}, value:Math.log(5+2), r:0.2, x:6, y:2 })
-      nodes.push({ data:{name:'64', value:5}, value:Math.log(5+2), r:0.2, x:6, y:4 })
-      nodes.push({ data:{name:'66', value:5}, value:Math.log(5+2), r:0.2, x:6, y:6 })
-      nodes.push({ data:{name:'68', value:5}, value:Math.log(5+2), r:0.2, x:6, y:8 })
-      nodes.push({ data:{name:'80', value:5}, value:Math.log(5+2), r:0.2, x:8, y:0 })
-      nodes.push({ data:{name:'82', value:5}, value:Math.log(5+2), r:0.2, x:8, y:2 })
-      nodes.push({ data:{name:'84', value:5}, value:Math.log(5+2), r:0.2, x:8, y:4 })
-      nodes.push({ data:{name:'86', value:5}, value:Math.log(5+2), r:0.2, x:8, y:6 })
-      nodes.push({ data:{name:'88', value:5}, value:Math.log(5+2), r:0.2, x:8, y:8 })
+    function callback(err, res, body) {
+      if (!err && res.statusCode === 200) {
+        var data = JSON.parse(body);
+        resolve(data);
+      } else {
+        reject(Error(`queryAnnot: -${res.statusCode}- ${err}`));
+      }
     }
 
-    // map plan to sphere
-    // angle of display > PI * degree / 180
-    var angle = Math.PI * param.angle / 180;
-    // map x,y from plan to polar,azimut in sphere
-    var angular = scale.scaleLinear().domain([0, radius * 2]).range([0, angle]);
-    // format for unity3D light object + x,y,z from spherical coordinate
-    var output = nodes.map(m => {
-      return {name: m.data.name,
-        count: m.data.count,
-        value:m.r,
-        x:radius * Math.sin(angular(m.y)) * Math.cos(angular(m.x)),
-        y:radius * Math.sin(angular(m.y)) * Math.sin(angular(m.x)),
-        z:radius * Math.cos(angular(m.y))
-      }
-    });
-    // console.log(output);
-
-    // format edges to array
-    var edges = Object.keys(univ.edges).map( m => {
-      e = univ.edges[m];
-      return {source: e.source,
-        target: e.target,
-        count: e.count,
-        value: e.count ? Math.log(e.count + 2) : 0 // avoid value = 0 if count != 0
-      };
-    });
-    resolve({nodes:output, edges:edges});
+    request(options, callback);
   });
 }
-*/
+
+function treeNodes(data) {
+  return new Promise(function(resolve) {
+    // console.log('annot', data[0]);
+    var res = data.map(d => {
+      return {
+        id: d.media.media_id,
+        title: d.media.title,
+        type: d.media.type,
+        annots: 0
+      };
+    });
+    resolve(res);
+  }).catch(err => {
+    return Error(`treeNode: ${err}`);
+  });
+}
+
+function toSpiral(data, p) {
+  return new Promise(function(resolve) {
+    var res = {cards: []};
+    // Spiral of Theodorus (Square Root Spiral)
+    // first isoscele right triangle of 1 unit
+    // each next position depend of the indice n
+
+    var a = 0; // angle at Origin, sum of each triangle
+    var r = 0; // radius of point n;
+    res.cards = data.map((d, i) => {
+      r = p.kr * Math.sqrt(i + 1); // radius
+      var c = {
+        media: d,
+        x: r * Math.cos(a),
+        y: r * Math.sin(a)
+      };
+      a += p.ka * Math.atan(1 / Math.sqrt(i + 1));
+      return c;
+    });
+
+    resolve(res);
+  }).catch(err => {
+    return Error(`toSpirale: ${err}`);
+  });
+}
+
+/* ////////////////////////////// */
 module.exports.toForce3D = function(graph, params) {
   return new Promise(function(resolve, reject) {
     // init nodes
