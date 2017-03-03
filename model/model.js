@@ -20,33 +20,60 @@ module.exports.getTree = function(p) {
     // get annots of selected media
     var param = {media: p.media};
     return queryAnnot(param);
+    // return querySearch(param);
   }).then(res => {
     // console.log('fist res', res);
+    var queue = [];
     // foreach annot
-    // var queue = [];
     // res._embedded.annotation.forEach(a => {
-    // for (var i = 12; i < 13; i++) {
-    var i = 12;
-    var a = res._embedded.annotation[i];
-      // console.log(i, a.key, a.relationship, a.value);
+    for (var i = 12; i < 14; i++) {
+    // var i = 12;
+      var a = res._embedded.annotation[i];
+    // console.log(i, a.key, a.relationship, a.value);
       // get media with same key + rel + value (+ filter type)
       // var param = {key: a.key, relationship: a.relationship, value: a.value};
-    var param = {since: '2017-01-01', value: a.value, relationship: a.relationship, key: a.key};
-    if (p.media_type) {
-      param.media_type = p.media_type;
+    // var param = {since: '2017-01-01', value: a.value, relationship: a.relationship, key: a.key};
+      var q = {
+        filter: [
+          {field: 'key', type: 'eq', value: a.key, where: 'and'},
+          {field: 'relationship', type: 'eq', value: a.relationship, where: 'and'},
+          {field: 'value', type: 'eq', value: a.value, where: 'and'}
+        ]
+      };
+
+      var param = {
+        db: 'default',
+        q: JSON.stringify(q),
+        term: `api: ${a.key}, ${a.relationship}, ${a.value}`
+      };
+      if (p.media_type) {
+        param.media_type = p.media_type;
+        param.term += ` & type=${p.media_type}`;
+      }
+      console.log(i, param.term);
+      queue.push(querySearch(param));
+    // return queryAnnot(param);
+    // return querySearch(param);
     }
-    console.log(i, param);
-      // queue.push(queryAnnot(param));
-    return queryAnnot(param);
+    return Promise.all(queue);
+  }).then(list => {
+    // console.log(list);
+    return new Promise(function(resolve, reject) {
+      var res = list.reduce((tot, d) => {
+        return tot.concat(d._embedded.media);
+      }, []);
+      resolve(res);
+    });
       // get media_id + media_type + title
-     // }
-    // return Promise.all(queue);
+      // }
   }).then(res => {
-    console.log('END - value', res.total_items);
-    // console.log('RES', res);
+    // console.log('END - value', res.total_items);
+    // console.log('RES.media[0]', res._embedded.media[0]);
     // });
     // sort linked media by shared annot
-    return treeNodes(res._embedded.annotation);
+    // return treeNodes(res._embedded.media, p);
+    console.log('media list', res.lengths);
+    return treeNodes(res, p);
   }).then(nodes => {
     console.log('node:', nodes[0]);
     // compute coords
@@ -357,18 +384,56 @@ function queryAnnot(p) {
   });
 }
 
-function treeNodes(data) {
+function querySearch(p) {
+  return new Promise(function(resolve, reject) {
+    var options = {
+      url: 'http://api.iclikval.riken.jp/search',
+      qs: p,
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${config.token}`
+      }
+    };
+
+    function callback(err, res, body) {
+      if (!err && res.statusCode === 200) {
+        var data = JSON.parse(body);
+        resolve(data);
+      } else {
+        reject(Error(`queryAnnot: -${res.statusCode}- ${err}`));
+      }
+    }
+
+    request(options, callback);
+  });
+}
+
+function treeNodes(data, p) {
   return new Promise(function(resolve) {
     // console.log('annot', data[0]);
-    var res = data.map(d => {
-      return {
-        id: d.media.media_id,
-        title: d.media.title,
-        type: d.media.type,
-        annots: 0
-      };
-    });
+    console.log('treeNodes', data[0]);
+    var res = [];
+    if (p.media_type) {
+      res = data.reduce((tot, d) => {
+        if (d.media_type === p.media_type) {
+          tot.push(media(d));
+        }
+        return tot;
+      }, []);
+    } else {
+      res = data.map(d => media(d));
+    }
     resolve(res);
+
+    function media(d) {
+      return {
+        id: d.id,
+        title: d.title,
+        type: d.media_type,
+        annots: d.auto_annotation_count + d.user_annotation_count
+      };
+    }
   }).catch(err => {
     return Error(`treeNode: ${err}`);
   });
