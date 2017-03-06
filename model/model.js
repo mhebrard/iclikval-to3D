@@ -20,19 +20,16 @@ module.exports.getTree = function(p) {
     // get annots of selected media
     var param = {media: p.media};
     return queryAnnot(param);
-    // return querySearch(param);
   }).then(res => {
     // console.log('fist res', res);
     var queue = [];
     // foreach annot
-    // res._embedded.annotation.forEach(a => {
-    for (var i = 12; i < 14; i++) {
-    // var i = 12;
+      // res._embedded.annotation.forEach(a => {
+    for (var i = 12; i < 18; i++) {
+      // var i = 12;
       var a = res._embedded.annotation[i];
-    // console.log(i, a.key, a.relationship, a.value);
-      // get media with same key + rel + value (+ filter type)
-      // var param = {key: a.key, relationship: a.relationship, value: a.value};
-    // var param = {since: '2017-01-01', value: a.value, relationship: a.relationship, key: a.key};
+      // console.log(i, a.key, a.relationship, a.value);
+    // get media with same key + rel + value (+ filter type)
       var q = {
         filter: [
           {field: 'key', type: 'eq', value: a.key, where: 'and'},
@@ -52,28 +49,20 @@ module.exports.getTree = function(p) {
       }
       console.log(i, param.term);
       queue.push(querySearch(param));
-    // return queryAnnot(param);
-    // return querySearch(param);
     }
+    // lunch all search in parallele
     return Promise.all(queue);
-  }).then(list => {
-    // console.log(list);
+  }).then(tab => {
+    // aggregate the results
     return new Promise(function(resolve, reject) {
-      var res = list.reduce((tot, d) => {
+      var res = tab.reduce((tot, d) => {
         return tot.concat(d._embedded.media);
       }, []);
       resolve(res);
     });
-      // get media_id + media_type + title
-      // }
-  }).then(res => {
-    // console.log('END - value', res.total_items);
-    // console.log('RES.media[0]', res._embedded.media[0]);
-    // });
-    // sort linked media by shared annot
-    // return treeNodes(res._embedded.media, p);
-    console.log('media list', res.lengths);
-    return treeNodes(res, p);
+  }).then(list => {
+    console.log('media list', list.length);
+    return treeNodes(list, p);
   }).then(nodes => {
     console.log('node:', nodes[0]);
     // compute coords
@@ -261,20 +250,33 @@ function toCircle(data, p) {
       .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
     ).descendants().slice(1);
     */
-
-    var nodes = layout(
+    var chart = layout(
       hierarchy.hierarchy(root)
       .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
-    ).descendants().slice(1);
+    );
+
+    // chart.descendants().forEach((n, i) => {
+    //  console.log(i, n.data.name, n.data.value, n.value);
+    // })
+    // console.log('d3.chart', chart.descendants());
 
     // scale
     var x = scale.scaleLinear().domain([0, 1]).range([0, 2 * Math.PI]);
     var y = scale.scaleLinear().domain([0, 1]).range([0, p.radius]);
 
+    // position root
+    pos(data.root, chart.descendants()[0]);
+    // position nodes
     // assign positions
-    nodes.forEach((n, i) => {
+    chart.descendants().slice(1).forEach((n, i) => {
       var d = data.nodes[i];
-      // console.log(`${d.name}: 0[${n.x0},${n.y0}], 1[${n.x1},${n.y1}]`);
+      pos(d, n);
+    });
+    // resolve
+    // console.log('toCircle end: ', data);
+    resolve(data);
+
+    function pos(d, n) {
       if (d.name === n.data.name) {
         // center
         var c = {
@@ -290,8 +292,7 @@ function toCircle(data, p) {
       } else {
         reject(new Error(`model.js/countPosition: ${n.data.name} != ${d.name}`));
       }
-    });
-    resolve(data);
+    }
   });
 }
 
@@ -413,27 +414,67 @@ function treeNodes(data, p) {
   return new Promise(function(resolve) {
     // console.log('annot', data[0]);
     console.log('treeNodes', data[0]);
-    var res = [];
-    if (p.media_type) {
-      res = data.reduce((tot, d) => {
-        if (d.media_type === p.media_type) {
-          tot.push(media(d));
-        }
-        return tot;
-      }, []);
-    } else {
-      res = data.map(d => media(d));
-    }
-    resolve(res);
 
-    function media(d) {
-      return {
-        id: d.id,
-        title: d.title,
-        type: d.media_type,
-        annots: d.auto_annotation_count + d.user_annotation_count
-      };
+    // aggregate Media + occurence count
+    // map existing nodes
+    var nMap = {};
+    var res = [];
+
+    // aggregate
+    data.forEach(d => {
+      // filter by type
+      if (!p.media_type || d.media_type === p.media_type) {
+        // if node not exist, add node
+        if (!nMap[d.id]) {
+          nMap[d.id] = res.length;
+          res.push({
+            media: {
+              id: d.id,
+              title: d.title,
+              type: d.media_type,
+              annots: d.auto_annotation_count + d.user_annotation_count
+            },
+            occur: 0
+          });
+        }
+        // occur +1
+        res[nMap[d.id]].occur++;
+      }
+    });
+
+    // extract root
+    var ref = res.splice(nMap[p.media], 1);
+
+    // sort by occurence
+    var sorted = res.sort((a, b) => {
+      return b.occur - a.occur;
+    });
+    console.log('treeNodes', sorted[0].occur);
+    console.log('treeNodes', sorted[1].occur);
+    console.log('treeNodes', '...');
+    console.log('treeNodes', sorted[sorted.length - 1].occur);
+
+    // inject ref and sorted
+    res = [];
+    if (ref.length > 0) {
+      res.push(ref[0].media);
+    } else {
+      res.push({
+        id: p.media,
+        title: 'test',
+        type: p.media_type,
+        annots: 0
+      });
     }
+    sorted.forEach(f => {
+      res.push(f.media);
+    });
+    // overwrite res
+    // res = sorted.map(m => {
+    //   return m.media;
+    // });
+
+    resolve(res);
   }).catch(err => {
     return Error(`treeNode: ${err}`);
   });
