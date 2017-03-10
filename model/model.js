@@ -434,7 +434,9 @@ function treeNodes(data, p) {
               type: d.media_type,
               annots: d.auto_annotation_count + d.user_annotation_count
             },
-            occur: 0
+            occur: 0,
+            autoAnnot: d.auto_annotation_count,
+            userAnnot: d.user_annotation_count
           });
         }
         // occur +1
@@ -449,32 +451,17 @@ function treeNodes(data, p) {
     var sorted = res.sort((a, b) => {
       return b.occur - a.occur;
     });
-    console.log('treeNodes', sorted[0].occur);
-    console.log('treeNodes', sorted[1].occur);
-    console.log('treeNodes', '...');
-    console.log('treeNodes', sorted[sorted.length - 1].occur);
+    // console.log('treeNodes', sorted[0]);
+    // console.log('treeNodes', sorted[1].occur);
+    // console.log('treeNodes', '...');
+    // console.log('treeNodes', sorted[sorted.length - 1].occur);
 
-    // inject ref and sorted
-    res = [];
-    if (ref.length > 0) {
-      res.push(ref[0].media);
-    } else {
-      res.push({
-        id: p.media,
-        title: 'test',
-        type: p.media_type,
-        annots: 0
-      });
-    }
-    sorted.forEach(f => {
-      res.push(f.media);
-    });
-    // overwrite res
-    // res = sorted.map(m => {
-    //   return m.media;
-    // });
+    // add toot on top
+    sorted.unshift(ref[0]);
+    console.log('sorted', sorted[0]);
+    console.log('sorted', sorted[1]);
 
-    resolve(res);
+    resolve(sorted);
   }).catch(err => {
     return Error(`treeNode: ${err}`);
   });
@@ -491,11 +478,10 @@ function toSpiral(data, p) {
     var r = 0; // radius of point n;
     res.cards = data.map((d, i) => {
       r = p.kr * Math.sqrt(i + 1); // radius
-      var c = {
-        media: d,
+      var c = Object.assign(d, {
         x: r * Math.cos(a),
         y: r * Math.sin(a)
-      };
+      });
       a += p.ka * Math.atan(1 / Math.sqrt(i + 1));
       return c;
     });
