@@ -19,10 +19,36 @@
   "homepage": "https://github.com/mhebrard/iclikval-to3D#readme",
   "dependencies": {
     "body-parser": "^1.15.2",
+    "d3-force": "^1.0.4",
     "d3-hierarchy": "^1.0.3",
     "d3-scale": "^1.0.4",
     "express": "^4.14.0",
     "http": "0.0.0",
-    "morgan": "^1.7.0"
+    "morgan": "^1.7.0",
+    "request": "^2.79.0"
+  },
+  "devDependencies": {
+    "xo": "^0.17.0"
+  },
+  "xo": {
+    "space": 2,
+    "envs": [
+      "node",
+      "browser"
+    ],
+    "ignores": [],
+    "rules": {
+      "space-before-function-paren": [
+        2,
+        "never"
+      ],
+      "brace-style": [
+        2,
+        "1tbs",
+        {
+          "allowSingleLine": true
+        }
+      ]
+    }
   }
 }

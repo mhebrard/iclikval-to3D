@@ -3,6 +3,8 @@ var config = require('./config.json');
 var http = require('http');
 var hierarchy = require('d3-hierarchy');
 var scale = require('d3-scale');
+// var annots = require('./annots.json')
+var fs = require('graceful-fs');
 
 //Query Params//
 var firstPage;
@@ -12,7 +14,7 @@ var sorted; // asc or desc
 var entry;
 // var key;
 var mode;
-var queryString;
+var queryString = '';
 var raw = {init:'raw'};
 
 module.exports.countMedia = function(param) {
@@ -77,6 +79,26 @@ module.exports.countMedia = function(param) {
 	.catch(function(err) { return Error("server.model.countMedia:"+err)})
 }
 
+module.exports.annotByType = function(param) {
+  firstPage= config.lastPage + 1; // 1;
+  lastPage=10;
+  pageSize=config.pageSize; // 4000;
+  sorted='asc';
+  entry='annotation';
+  // queryString=`&db=default&media_type=journal_article&q=${param.query}&term=${param.query}`;
+  mode='annotByType';
+
+  return Promise.resolve()
+  .then(function() {
+    return new Promise(function(resolve, reject) {
+      query(firstPage, resolve);
+    });
+  })
+  .then(function(out) {
+    console.log(out);
+  });
+}
+
 function query(page, callback) {
 
 	var options = {
@@ -113,13 +135,13 @@ function receive(data, callback) {
 	if (sorted === 'desc') { // 1st page
 		sorted = 'bottomTop'
 		console.log(`from page ${data.page_count} to ${lastPage}`);
-		query(data.page_count);
+		query(data.page_count, callback);
 	} else {
 		action(data)
 		// recursive call
 		if (sorted === 'asc') {
 			if(data.page < data.page_count && (lastPage>0 ? data.page<lastPage : true) ) { //if lastPage="", read all
-				query(data.page + 1);
+				query(data.page + 1, callback);
 			} else {
 				callback(raw);
 			}
@@ -137,4 +159,41 @@ function action(data) {
   if(mode === "countMedia") {
     raw = data.extra.media_count.media;
   }
+  if(mode === "annotByType") {
+    data['_embedded'].annotation.forEach(f => {
+      // console.log(f.media.type);
+      var type = f.media.type.replace(' ','_');
+      // console.log(type);
+
+      if(!annots[f.key]) {
+        annots[f.key] = {};
+      }
+      if(!annots[f.key][f.value]) {
+        annots[f.key][f.value] = {};
+      }
+      if(!annots[f.key][f.value][type]) {
+        annots[f.key][f.value][type] = 1;
+      } else {
+        annots[f.key][f.value][type]++;
+      }
+
+      // raw[f.key][f.value] = f.media;
+    })
+  }
+  // write data file
+  fs.writeFile('./annots.json', JSON.stringify(annots), function(err) {
+    if(err) {
+      new Error("Cannot write file : "+err);
+    } else {
+      console.log('page', data.page, 'over', data.page_count);
+    }
+  });
+
+  // write config
+  config.lastPage = data.page;
+  fs.writeFile('./config.json', JSON.stringify(config), function(err) {
+    if(err) {
+      new Error("Cannot write file : "+err);
+    }
+  });
 }
