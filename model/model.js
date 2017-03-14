@@ -25,9 +25,10 @@ module.exports.getTree = function(p) {
     var queue = [];
     // foreach annot
       // res._embedded.annotation.forEach(a => {
-    for (var i = 12; i < 18; i++) {
+      var annots = res._embedded.annotation;
+    for (var i = 12; i < 18 && i < annots.length; i++) {
       // var i = 12;
-      var a = res._embedded.annotation[i];
+      var a = annots[i];
       // console.log(i, a.key, a.relationship, a.value);
     // get media with same key + rel + value (+ filter type)
       var q = {
@@ -402,7 +403,10 @@ function querySearch(p) {
         var data = JSON.parse(body);
         resolve(data);
       } else {
-        reject(Error(`queryAnnot: -${res.statusCode}- ${err}`));
+        // empty
+        var empty = {_embedded: {media: []}};
+        resolve(empty);
+        // Error(`queryAnnot: -${res.statusCode}- ${err}`));
       }
     }
 
