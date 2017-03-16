@@ -8,6 +8,23 @@ var config = require('../config.json');
 
 var collections = require('./collections.json');
 
+// global variable for catalogue loop //
+var previousMedia = '';
+var annotPage = 1;
+var annotPageSize = 25;
+var annotLastPage = 1;
+var annotMax = 1;
+var annotCount = 0;
+var annotList = [];
+var annotIdx = 0;
+var searchPage = 1;
+var searchPageSize = 25;
+var searchLastPage = 1;
+var searchCount = 0;
+var searchMax = 1;
+var mediaList = [];
+var loop = false;
+
 module.exports.count = {
   // data: collections,
   get: function() { return collections; },
@@ -17,63 +34,184 @@ module.exports.count = {
 
 module.exports.getTree = function(p) {
   return Promise.resolve().then(() => {
-    // get annots of selected media
-    var param = {media: p.media};
-    return queryAnnot(param);
-  }).then(res => {
-    // console.log('fist res', res);
-    var queue = [];
-    // foreach annot
-      // res._embedded.annotation.forEach(a => {
-      var annots = res._embedded.annotation;
-    for (var i = 12; i < 18 && i < annots.length; i++) {
-      // var i = 12;
-      var a = annots[i];
-      // console.log(i, a.key, a.relationship, a.value);
-    // get media with same key + rel + value (+ filter type)
-      var q = {
-        filter: [
-          {field: 'key', type: 'eq', value: a.key, where: 'and'},
-          {field: 'relationship', type: 'eq', value: a.relationship, where: 'and'},
-          {field: 'value', type: 'eq', value: a.value, where: 'and'}
-        ]
-      };
-
-      var param = {
-        db: 'default',
-        q: JSON.stringify(q),
-        term: `api: ${a.key}, ${a.relationship}, ${a.value}`
-      };
-      if (p.media_type) {
-        param.media_type = p.media_type;
-        param.term += ` & type=${p.media_type}`;
+    var action;
+    // test if same media
+    if (!previousMedia || previousMedia !== p.media) {
+      action = catalogueNewMedia(p)
+      .then(() => catalogueNewAnnotList())
+      .then(() => catalogueRequestAnnot(p));
+    } else {
+      // same media
+      annotIdx++;
+      if (annotIdx < annotList.length) {
+        // next annot in saved list
+        action = catalogueRequestAnnot(p);
+      } else {
+        // finish current annotPage
+        annotPage++;
+        if (annotPage <= annotLastPage) {
+          action = catalogueNewAnnotList()
+          .then(() => catalogueRequestAnnot(p));
+        } else {
+          // return empty response
+          action = Promise.resolve({_embedded: {media: []}});
+          loop = false;
+        }
       }
-      console.log(i, param.term);
-      queue.push(querySearch(param));
+      // *********************** //
     }
-    // lunch all search in parallele
-    return Promise.all(queue);
-  }).then(tab => {
-    // aggregate the results
-    return new Promise(function(resolve, reject) {
-      var res = tab.reduce((tot, d) => {
-        return tot.concat(d._embedded.media);
-      }, []);
-      resolve(res);
-    });
-  }).then(list => {
-    console.log('media list', list.length);
-    return treeNodes(list, p);
+    return action;
+  }).then(res => {
+    console.log('responses: ', res.total_items);
+    var action;
+    if (res._embedded.media.length > 0) {
+      // count
+      if (searchMax < res.total_items) {
+        searchMax = res.total_items;
+      }
+      //
+      action = catalogueAddMedia(res._embedded.media, p);
+    } else {
+      action = Promise.resolve(mediaList);
+    }
+    // new media to add on the layout
+    // console.log(res._embedded.media);
+    return action;
   }).then(nodes => {
-    console.log('node:', nodes[0]);
+    // console.log('node:', nodes);
     // compute coords
     return toSpiral(nodes, p);
   }).then(res => {
-    console.log('card:', res.cards[0]);
+    // console.log('card:', res);
     // send list to unity
-    return Promise.resolve(res);
+    var out = Object.assign(res, {
+      currentSearch: searchCount,
+      maxSearch: searchMax,
+      currentAnnot: annotCount,
+      maxAnnot: annotMax,
+      loop: loop
+    });
+    return Promise.resolve(out);
+  }).catch(err => {
+    return Error(`getTree: ${err}`);
   });
 };
+
+function catalogueNewMedia(p) {
+  return new Promise(resolve => {
+    previousMedia = p.media;
+    annotPage = 1;
+    annotCount = 0;
+    // annotMax = 1;
+    searchPage = 1;
+    searchCount = 0;
+    // searchMax = 1;
+    mediaList = [];
+    loop = true;
+    resolve();
+  }).catch(err => {
+    return Error(`catalogueNewMedia: ${err}`);
+  });
+}
+
+function catalogueNewAnnotList() {
+  var param = {media: previousMedia, page: annotPage, page_size: annotPageSize};
+  return queryAnnot(param)
+  .then(res => {
+    annotList = res._embedded.annotation;
+    annotIdx = 0;
+    annotLastPage = res.page_count;
+    annotMax = res.total_items;
+    return Promise.resolve();
+  }).catch(err => {
+    return Error(`catalogueNewAnnotList: ${err}`);
+  });
+}
+
+function catalogueRequestAnnot(p) {
+  annotCount++;
+  var a = annotList[annotIdx];
+  var q = {
+    filter: [
+      {field: 'key', type: 'eq', value: a.key, where: 'and'},
+      {field: 'relationship', type: 'eq', value: a.relationship, where: 'and'},
+      {field: 'value', type: 'eq', value: a.value, where: 'and'}
+    ]
+  };
+  var param = {
+    db: 'default',
+    q: JSON.stringify(q),
+    term: `api: ${a.key}, ${a.relationship}, ${a.value}`,
+    page: searchPage,
+    page_size: searchPageSize
+  };
+  if (p.media_type) {
+    param.media_type = p.media_type;
+    param.term += ` & type=${p.media_type}`;
+  }
+
+  console.log(param.term);
+  return querySearch(param)
+  .catch(err => {
+    return Error(`catalogueRequestAnnot: ${err}`);
+  });
+}
+
+function catalogueAddMedia(data, p) {
+  return new Promise(resolve => {
+    // console.log('d', data[0]);
+    // aggregate Media + occurence count
+    // map existing nodes
+    var nMap = {};
+    mediaList.forEach((f, i) => {
+      nMap[f.media.id.toString()] = i;
+    });
+    // console.log('nMap', nMap);
+    // aggregate
+    data.forEach(d => {
+      var id = d.id.toString();
+      // filter by type
+      if (!p.media_type || d.media_type === p.media_type) {
+        // if node not exist, add node
+        if (nMap[id] === undefined) {
+          nMap[id] = mediaList.length;
+          mediaList.push({
+            media: {
+              id: id,
+              title: d.title,
+              type: d.media_type,
+              annots: d.auto_annotation_count + d.user_annotation_count
+            },
+            occur: 0,
+            autoAnnot: d.auto_annotation_count,
+            userAnnot: d.user_annotation_count
+          });
+        }
+        // occur +1
+        mediaList[nMap[id]].occur++;
+        // console.log('add', id, 'idx', nMap[id], 'occur', mediaList[nMap[id]].occur);
+      }
+    });
+
+    // extract root
+    var ref = mediaList.splice(nMap[p.media], 1);
+    // sort by occurence
+    var sorted = mediaList.sort((a, b) => {
+      return b.occur - a.occur;
+    });
+    // add root on top
+    sorted.unshift(ref[0]);
+    // update mediaList
+    mediaList = sorted;
+
+    // count
+    searchCount = mediaList.length;
+
+    resolve(mediaList);
+  }).catch(err => {
+    return Error(`catalogueAddMedia: ${err}`);
+  });
+}
 
 function countRequest(count, p) {
   return Promise.resolve().then(() => {
