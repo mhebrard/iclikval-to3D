@@ -6,8 +6,6 @@ var hierarchy = require('d3-hierarchy');
 var scale = require('d3-scale');
 var config = require('../config.json');
 
-var collections = require('./collections.json');
-
 // global variable for catalogue loop //
 var previousMedia = '';
 var annotPage = 1;
@@ -25,11 +23,14 @@ var searchMax = 1;
 var mediaList = [];
 var loop = false;
 
+var collections = require('./collections.json');
+
 module.exports.count = {
   // data: collections,
   get: function() { return collections; },
   request: function(param) { return countRequest(this, param); },
-  updated: function() { collections.updated = new Date(); }
+  layout: function(param) { return toCircle(this.get(), param); },
+  updated: function() { this.get().updated = new Date(); }
 };
 
 module.exports.getTree = function(p) {
@@ -216,45 +217,40 @@ function catalogueAddMedia(data, p) {
 function countRequest(count, p) {
   return Promise.resolve().then(() => {
     // query ick: count annots by media
-    var param = {group: ['media', 'media_type'], filter: p.filters}; // only1chunts
-    return queryCount(param);
-  }).then(annots => {
-    // save top media
-    var top = annots.result[0];
-    compareTop(count.get().root.top, top.group.media, top.group.media_type, top.count);
+    // var param = {group: ['media', 'media_type'], filter: p.filters}; // only1chunts
+    // return queryCount(param);
 
-    // console.log('annots[0].group (media + media_type)', annots.result[0].group);
-    // console.log('annot[0].count (nb of annots)', annots.result[0].count);
-    // console.log('ANNOTS', count.get());
+    // query ick: count media by media_type
+    var q = {
+      filter: [
+        {field: 'key', type: 'eq', value: 'title', where: 'and'}
+      ]
+    };
+    var param = {
+      db: 'default',
+      q: JSON.stringify(q),
+      term: 'api: title',
+      page: 1,
+      page_size: 1
+    };
 
-    // group by media type
-    return groupBy('media_type', annots.result);
-  }).then(types => {
-    // console.log('types.length', types.length);
-    // console.log('types[0].group (media_type)', types[0].group);
-    // console.log('types[0].count (nb of media)', types[0].count);
-    // console.log('types[0].items[0].group (media + media_type)', types[0].items[0].group);
-    // console.log('types[0].items[0].count (nb of annots)', types[0].items[0].count);
-    return countNodes(count.get(), types);
-  }).then(() => {
-    // console.log('nodes.length', nodes.length);
-    // console.log('col.nodes', col.nodes);
+    console.log(param.term);
+    return querySearch(param);
+  }).then(res => {
+    var action;
+    if (res._embedded.media.length > 0) {
+      // save new count
+      action = countNodes(count, res);
+      /* .then(data ={
+        // count.update();
+        // Write file for save
+      }); */
+    } else {
+      action = Promise.resolve(count.get());
+    }
 
-    // update date time
-    count.updated();
-
-    // compute position
-    // PACK LAYOUT //
-    // return toPack(count.get(), p);
-
-    // CIRCULAR LAYOUT //
-    return toCircle(count.get(), p);
-  })
-  /* .then(data => {
-    // Write file for save
-  })
-  */
-  .catch(err => {
+    return action;
+  }).catch(err => {
     console.log('countRequest:', err);
   });
 }
@@ -310,6 +306,8 @@ function countNodes(res, data) {
       var top = d.items[0];
       compareTop(node.top, top.group.media, top.group.media_type, top.count);
     });
+
+    // count.updated();
     resolve();
   });
 }
@@ -384,20 +382,10 @@ function toCircle(data, p) {
     // .padding(2);
 
     // compute layout
-    /* var nodes = layout(
-      hierarchy.hierarchy(root)
-      .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
-    ).descendants().slice(1);
-    */
     var chart = layout(
       hierarchy.hierarchy(root)
       .sum(function(d) { return Math.log(d.value + 2); }) // avoid value = 0
     );
-
-    // chart.descendants().forEach((n, i) => {
-    //  console.log(i, n.data.name, n.data.value, n.value);
-    // })
-    // console.log('d3.chart', chart.descendants());
 
     // scale
     var x = scale.scaleLinear().domain([0, 1]).range([0, 2 * Math.PI]);

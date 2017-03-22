@@ -1,12 +1,29 @@
 {
   "root": {
     "name": "iCLiKVAL",
-    "count": 0,
-    "annots": 0,
-    "top": {
-      "annots":0
-    }
+    "count": 439069
   },
-  "nodes":[],
+  "nodes":[
+    {
+      "name": "journal_article",
+      "count": 432249
+    },
+    {
+      "name": "video",
+      "count": 5554
+    },
+    {
+      "name": "image",
+      "count": 657
+    },
+    {
+      "name": "audio",
+      "count": 582
+    },
+    {
+      "name": "dataset",
+      "count": 27
+    }
+  ],
   "updated":"today"
 }
