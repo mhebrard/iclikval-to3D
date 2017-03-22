@@ -38,7 +38,8 @@ app.use('/catalogue', require('./routes/catalogue.js'));
 // listen
 app.listen(port, function() {
   console.log(`Server running on ${port}`);
-  var param = {filters: {year: '2017'}, radius: 6};
+  var param = {filters: {reviewer: 'tdtaylor'}, radius: 6};
+  // var param = {filters: {reviewer: 'r1nter4569'}, radius: 6};
   model.count.request(param).then(c => {
     console.log('Nodes Count', c.nodes.length);
     // console.log('Nodes', c.nodes);
@@ -48,5 +49,7 @@ app.listen(port, function() {
     return Promise.resolve();
   }).then(() => {
     console.log('ready');
+  }).catch(err => {
+    return Error(`server start: ${err}`);
   });
 });
