@@ -24,6 +24,7 @@ var mediaList = [];
 var loop = false;
 
 var collections = require('./collections.json');
+var catalogue = require('./catalogue.json');
 
 module.exports.count = {
   // data: collections,
@@ -36,30 +37,61 @@ module.exports.count = {
 module.exports.getTree = function(p) {
   return Promise.resolve().then(() => {
     var action;
-    // test if same media
-    if (!previousMedia || previousMedia !== p.media) {
-      action = catalogueNewMedia(p)
-      .then(() => catalogueNewAnnotList())
-      .then(() => catalogueRequestAnnot(p));
-    } else {
-      // same media
-      annotIdx++;
-      if (annotIdx < annotList.length) {
-        // next annot in saved list
-        action = catalogueRequestAnnot(p);
+    // test media
+    if (p.media === '') {
+      console.log('media null');
+      var param = {};
+      if (p.media_type) {
+        console.log('type', p.media_type);
+
+        // request ick search 1 media of good type
+        // param...
       } else {
-        // finish current annotPage
-        annotPage++;
-        if (annotPage <= annotLastPage) {
-          action = catalogueNewAnnotList()
-          .then(() => catalogueRequestAnnot(p));
-        } else {
-          // return empty response
-          action = Promise.resolve({_embedded: {media: []}});
-          loop = false;
-        }
+        // request ick serch 1 media
+        // param...
       }
-      // *********************** //
+      // action = querySearch(param);
+    } else {
+      // var empty = {};
+      // action = Promise.resolve(empty + p.media);
+    }
+
+    return action;
+  }).then(res => {
+    p.media = res; // extract p.media from response
+    console.log('media', p.media);
+    var action;
+    if (p.media === undefined) {
+      // return empty response
+      mediaList = catalogue.mediaList;
+      action = Promise.resolve({_embedded: {media: []}});
+      loop = false;
+    } else {
+      // test if same media
+      if (!previousMedia || previousMedia !== p.media) {
+        action = catalogueNewMedia(p)
+        .then(() => catalogueNewAnnotList())
+        .then(() => catalogueRequestAnnot(p));
+      } else {
+        // same media
+        annotIdx++;
+        if (annotIdx < annotList.length) {
+          // next annot in saved list
+          action = catalogueRequestAnnot(p);
+        } else {
+          // finish current annotPage
+          annotPage++;
+          if (annotPage <= annotLastPage) {
+            action = catalogueNewAnnotList()
+            .then(() => catalogueRequestAnnot(p));
+          } else {
+            // return empty response
+            action = Promise.resolve({_embedded: {media: []}});
+            loop = false;
+          }
+        }
+        // *********************** //
+      }
     }
     return action;
   }).then(res => {
