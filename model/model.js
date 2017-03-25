@@ -1,6 +1,7 @@
 // require
 var http = require('http');
 var request = require('request');
+var fs = require('graceful-fs');
 // var force = require('d3-force');
 var hierarchy = require('d3-hierarchy');
 var scale = require('d3-scale');
@@ -27,11 +28,11 @@ var collections = require('./collections.json');
 var catalogue = require('./catalogue.json');
 
 module.exports.count = {
-  // data: collections,
-  get: function() { return collections; },
+  data: collections,
+  get: function() { return this.data; },
   request: function(param) { return countRequest(this, param); },
   layout: function(param) { return toCircle(this.get(), param); },
-  updated: function() { this.get().updated = new Date(); }
+  update: function() { this.get().updated = new Date(); }
 };
 
 module.exports.getTree = function(p) {
@@ -40,20 +41,37 @@ module.exports.getTree = function(p) {
     // test media
     if (p.media === '') {
       console.log('media null');
-      var param = {};
-      if (p.media_type) {
-        console.log('type', p.media_type);
+      // query one media from ick
+      var q = {
+        bool: {must: [
+          // {term:{key: "key"}},
+          {term: {relationship: 'is'}}// ,
+          // {term:{value: "value"}}
+        ]}};
+      var param = {
+        db: 'default',
+        q: JSON.stringify(q),
+        term: 'api: * is *',
+        page: 1,
+        page_size: 1
+      };
 
-        // request ick search 1 media of good type
-        // param...
-      } else {
-        // request ick serch 1 media
-        // param...
+      if (p.media_type) {
+        param.media_type = p.media_type;
+        param.term += ` + type=${p.media_type}`;
       }
+
+      console.log(param.term);
+      action = querySearch(param)
+        .then(res => {
+          // console.log(res._embedded.media[0]);
+          p.media = res._embedded.media[0].id;
+          return Promise.resolve(p.media);
+        });
       // action = querySearch(param);
     } else {
       // var empty = {};
-      // action = Promise.resolve(empty + p.media);
+      action = Promise.resolve(p.media);
     }
 
     return action;
@@ -129,6 +147,34 @@ module.exports.getTree = function(p) {
     return Error(`getTree: ${err}`);
   });
 };
+
+function timer(msg, a) {
+  var b = performance.now();
+  console.log(`${msg} [${((b - a) / 1000)} ']s`);
+  a = b;
+}
+
+var queryParams = {
+  all: function(type) {
+    var q = {
+      bool: {must: [
+        // {term:{key: "key"}},
+        {term: {relationship: 'is'}}// ,
+        // {term:{value: "value"}}
+      ]}};
+    var param = {
+      db: 'default',
+      q: JSON.stringify(q),
+      term: 'api: * is *',
+      page: 1,
+      page_size: 1
+    };
+    if (type) {
+      param.media_type = type;
+    }
+    return param;
+  }
+}
 
 function catalogueNewMedia(p) {
   return new Promise(resolve => {
@@ -247,43 +293,109 @@ function catalogueAddMedia(data, p) {
 }
 
 function countRequest(count, p) {
+  console.time('countRequest');
+  var result = count.get();
   return Promise.resolve().then(() => {
-    // query ick: count annots by media
-    // var param = {group: ['media', 'media_type'], filter: p.filters}; // only1chunts
-    // return queryCount(param);
-
     // query ick: count media by media_type
-    var q = {
-      filter: [
-        {field: 'key', type: 'eq', value: 'title', where: 'and'}
-      ]
-    };
-    var param = {
-      db: 'default',
-      q: JSON.stringify(q),
-      term: 'api: title',
-      page: 1,
-      page_size: 1
-    };
-
-    console.log(param.term);
-    return querySearch(param);
+    // console.log(param.term);
+    console.time('query');
+    return querySearch(queryParams.all());
   }).then(res => {
+    console.timeEnd('query');
+    // result journal + extra count for each type
+    // console.log('search result', res);
     var action;
+    // verif get results
     if (res._embedded.media.length > 0) {
-      // save new count
-      action = countNodes(count, res);
-      /* .then(data ={
-        // count.update();
-        // Write file for save
-      }); */
+      // get media count by type
+      action = countGetCount(res.extra.media_count)
+      // get journal media
+      .then(out => {
+        result = out;
+        return countSaveRoot(result.root, res._embedded.media[0]);
+      })
+      // for each type, query 1 media
+      .then(root => {
+        var queue = [];
+        // console.log('out', result);
+        result.nodes.forEach(f => {
+          queue.push(
+            querySearch(queryParams.all(f.name))
+            .then(res => {
+              var sub;
+              if (res._embedded.media.length > 0) {
+                sub = countSaveRoot(f, res._embedded.media[0]);
+              } else {
+                // console.log('oops', res);
+                sub = Promise.resolve(f);
+              }
+              return sub;
+            })
+          );
+        });
+        return Promise.all(queue);
+      })
+      // save file
+      .then(out => {
+        // console.log('after', result);
+        return writeFile('./model/collections.json', result);
+        // console.log(result.nodes);
+      })
+      // count data is new file
+      .then(json => {
+        count.data = json;
+        count.update();
+        return Promise.resolve(count.get());
+      });
     } else {
+      // get save files
+      console.log('no results');
       action = Promise.resolve(count.get());
     }
-
+    console.timeEnd('countRequest');
     return action;
   }).catch(err => {
     console.log('countRequest:', err);
+  });
+}
+
+function countGetCount(mcount) {
+  console.time('countGetCount');
+  return new Promise(function(resolve) {
+    var res = {
+      root: {
+        name: 'iCLiKVAL',
+        count: mcount.total
+      },
+      nodes: []
+    };
+
+    Object.keys(mcount.media).forEach(k => {
+      res.nodes.push({
+        name: k,
+        count: mcount.media[k]
+      });
+    });
+    console.timeEnd('countGetCount');
+    resolve(res);
+  }).catch(err => {
+    console.log(`countGetCount: ${err}`);
+  });
+}
+
+function countSaveRoot(res, media) {
+  console.time('countSaveRoot');
+  return new Promise(function(resolve) {
+    // console.log(media);
+    res.top = {
+      id: media.id,
+      title: media.title,
+      type: media.media_type,
+      annots: media.auto_annotation_count + media.user_annotation_count
+    };
+    resolve(res);
+  }).catch(err => {
+    console.log(`countSaveRoot: ${err}`);
   });
 }
 
@@ -297,50 +409,40 @@ function compareTop(ctop, ntop, ntype, nannots) {
   }
 }
 
-function countNodes(res, data) {
+function countNodes(data) {
   return new Promise(function(resolve) {
-    // Add data nodes in res nodes
-    // update top for each nodes
+    // console.log('res', res);
+    // console.log('data', data);
+    console.log('media_count', data.extra.media_count);
+    var count = data.extra.media_count;
+    var res = {
+      root: {
+        name: 'iCLiKVAL',
+        count: count.total
+      },
+      nodes: []
+    };
 
-    // map existing nodes
-    var nMap = {};
-    // var nodes = res.nodes;
-    res.nodes.forEach((n, i) => {
-      nMap[n.name] = i;
+    Object.keys(count.media).forEach(k => {
+      res.nodes.push({
+        name: k,
+        count: count.media[k]
+      });
     });
-
-    // add counts
-    data.forEach(d => {
-      // if node not exist, add node
-      if (!nMap[d.group]) {
-        nMap[d.group] = res.nodes.length;
-        res.nodes.push({
-          name: d.group,
-          count: 0,
-          annots: 0,
-          top: {annots: 0}
-        });
-      }
-      // get collections node
-      var node = res.nodes[nMap[d.group]];
-      // add count
-      node.count += d.count;
-      res.root.count += d.count;
-      // sum annotations from each items
-      var sum = d.items.reduce((tot, i) => {
-        tot += i.count;
-        return tot;
-      }, 0);
-      node.annots += sum;
-      res.root.annots += sum;
-      // save top media
-      // console.log('ITEMS', d.items[0].count, d.items[1].count, d.items[2].count, d.items[3].count, d.items[4].count);
-      var top = d.items[0];
-      compareTop(node.top, top.group.media, top.group.media_type, top.count);
-    });
-
     // count.updated();
-    resolve();
+    resolve(res);
+  });
+}
+
+function writeFile(path, json) {
+  console.time('writeFile');
+  return new Promise(function(resolve, reject) {
+    fs.writeFile(path, JSON.stringify(json), function(err) {
+      console.timeEnd('writeFile');
+      if (err) {
+        reject(new Error(`Cannot write file ${path}: ${err}`));
+      } else { resolve(json); }
+    });
   });
 }
 
