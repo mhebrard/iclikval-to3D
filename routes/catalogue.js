@@ -12,9 +12,9 @@ router.use(function(req, res, next) {
 });
 
 router.post('/', [require('../middlewares/authentify')], (req, res) => {
-  console.log('Catalogue');
-  console.log(req.body.media, req.body.media_type);
-  model.getTree(req.body).then(data => {
+  // console.log('Catalogue');
+  console.log('Catalogue', req.body.media, req.body.media_type);
+  model.catalogue.request(req.body).then(data => {
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*'
