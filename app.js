@@ -38,15 +38,18 @@ app.use('/catalogue', require('./routes/catalogue.js'));
 // listen
 app.listen(port, function() {
   console.log(`Server running on ${port}`);
-  var param = {filters: {year: '2017'}, radius: 6};
+  var param = {filters: {reviewer: 'tdtaylor'}};
+  // var param = {filters: {reviewer: 'r1nter4569'}, radius: 6};
   model.count.request(param).then(c => {
-    console.log('Nodes Count', c.nodes.length);
-    // console.log('Nodes', c.nodes);
+    // console.log('Nodes Count', c.nodes.length);
+    console.log('Count', c);
     // console.log('Node[0]', c.nodes[0]);
-    console.log('updated', c.updated);
+    // console.log('updated', c.updated);
     // console.log('root', c.root);
     return Promise.resolve();
   }).then(() => {
     console.log('ready');
+  }).catch(err => {
+    return Error(`server start: ${err}`);
   });
 });

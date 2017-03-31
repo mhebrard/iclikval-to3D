@@ -13,12 +13,13 @@ router.use(function(req, res, next) {
 
 router.post('/', [require('../middlewares/authentify')], (req, res) => {
   console.log('All');
-  var data = model.count.get();
-  res.writeHead(200, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*'
+  model.count.layout(req.body).then(data => {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify(data));
   });
-  res.end(JSON.stringify(data));
 });
 
 module.exports = router;

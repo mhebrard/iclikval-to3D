@@ -1,12 +1,1 @@
-{
-  "root": {
-    "name": "iCLiKVAL",
-    "count": 0,
-    "annots": 0,
-    "top": {
-      "annots":0
-    }
-  },
-  "nodes":[],
-  "updated":"today"
-}
+{"root":{"name":"iCLiKVAL","count":3474022,"top":{"id":"56edbaace36265854f7c2f6d","title":"Comparative analysis of processed ribosomal protein pseudogenes in four mammalian genomes.","type":"journal_article","autoAnnots":247,"userAnnots":3633}},"nodes":[{"name":"journal_article","count":3468960,"top":{"id":"56edbaace36265854f7c2f6d","title":"Comparative analysis of processed ribosomal protein pseudogenes in four mammalian genomes.","type":"journal_article","autoAnnots":247,"userAnnots":3633}},{"name":"video","count":3338,"top":{"id":"58183727e36265dc729fe077","title":"\"Mysterious Microbes\" Trailer","type":"video","autoAnnots":64,"userAnnots":1}},{"name":"image","count":683,"top":{"id":"576768f0e3626553bfc4612c","title":"母斑馬魚 Female Zebrafish-01_Worth US$200 dollars","type":"image","autoAnnots":75,"userAnnots":0}},{"name":"dataset","count":459,"top":{"id":"578dcc4fe3626546bdd688ae","title":"Genomic data from the giant panda (Ailuropoda melanoleuca)","type":"dataset","autoAnnots":120,"userAnnots":0}},{"name":"audio","count":582,"top":{"id":"568cf84de3626585ba50c51a","title":"ST'S CHEONG SUK-WAI TALKS TO GUT BUG PIONEER JEREMY NICHOLSON","type":"audio","autoAnnots":34,"userAnnots":0}}]}
